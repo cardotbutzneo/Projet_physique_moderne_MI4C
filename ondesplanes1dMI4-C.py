@@ -37,12 +37,12 @@ def PlaneWave(amp : float , k : float , omega : float, x : np.ndarray, t : float
     """Return a plane wave in 1d time reliant"""
     return amp*exp(1j*(omega * t - k * x)) 
 
-# on définit une fonction "main", qui sert de base au programme
+# on définit une fonction "main()", qui sert de base au programme
 def main():
 
     print("Entrer les conditions du systeme :")
-    try: # permet de vérifier la bonne saisie des valeur (comme un do while)
-        # input sert à lire la donnée d'entrée (comme scanf())
+    try: # permet de vérifier la bonne saisie des valeurs (comme un do while)
+        # input() sert à lire la donnée d'entrée (comme scanf())
         t = int(input("Entrer la valeur de t : "))
         amp = float(input("Entrer la valeur de l'amplitude : "))
         omega = float(input("Entrer la valeur de la pulsation propre : "))
@@ -56,9 +56,9 @@ def main():
 
     x = np.linspace(-pi/dk, pi/dk, nb_points) # calcul de l'axe x sur [-pi/delta_k,pi/delta_k]
 
-    y = PlaneWave(amp, k, omega, x, t) # calcul de l'axe y (grace à numpy on peut directement envoyé un tableau et numpy fait le calcul à notre place)
+    y = PlaneWave(amp, k, omega, x, t) # calcul de l'axe y (grace à numpy on peut directement envoyer un tableau et numpy fait le calcul à notre place)
     
     tracer_graphique(x,y,t) # on trace le graphique
 
-if __name__ == "__main__": # on appel la fonction "main()"
+if __name__ == "__main__": # on appelle la fonction "main()"
     main()
