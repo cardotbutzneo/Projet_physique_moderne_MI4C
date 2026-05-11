@@ -1,3 +1,9 @@
+#Créateur CARDOT-BUTZ Néo
+#Version 1.2
+#Création le (09/05/2026)
+
+### Ce programme a pour but de simuler un paquet d'onde sur une marche de potentiel ###
+
 import numpy as np
 import matplotlib.pyplot as plt 
 
@@ -52,7 +58,7 @@ def main():
     print("Entrer les conditions du systeme :")
     try: # permet de vérifier la bonne saisie des valeurs (comme un do while)
         # input() sert à lire la donnée d'entrée (comme scanf())
-        t = int(input("Entrer la valeur de t : "))
+        t = abs(int(input("Entrer la valeur de t : ")))
         amp = float(input("Entrer la valeur de l'amplitude : "))
     except ValueError: # si il y a une erreur de type on rentre dans le bloque
         print("Erreur : veuillez entrer des nombres valides.")
@@ -64,7 +70,7 @@ def main():
 
     x_debut, x_fin = -50, 50 # changer l'intervalle
 
-    x = np.linspace(x_debut,x_fin,nb_points) # calcul de l'axe x sur [0,100]
+    x = np.linspace(x_debut,x_fin,nb_points) # calcul de l'axe x
 
     k = [
         k_centre - 2*dk,
