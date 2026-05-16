@@ -24,3 +24,8 @@ Pour lancer le programme, il suffit de taper la commande suivante :
 ````python
 python3 ondesplanes1dMI4-C.py
 ````
+
+## Description du projet :
+Le projet à pour but de former les étudiants aux outils et aux méthodes de recherche scientifique.
+Pour visualiser le comportement des particules dans différents cas, on utilise python.   
+Une version du code est également disponible pour Jupyter Notebook pour les ondes gaussiennes.
