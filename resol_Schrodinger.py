@@ -1,9 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from paquetOndeGaussMI4_C.py import GaussWP
+from PaquetOndeGaussMI4_C import GaussWP, C, H_BARRE, M
+
+"""
+#Ce code permet de simuler l'équation de Schrödinger en 1D pour une onde gaussienne.
+
+##Fonction : 
+- deriver : permet de calculer la dérivée d'une fonction numérique par récurence
+- erreur : permet de calculer le pourcentage d'erreur entre une fonction numérique et une
+
+"""
 
 #--Variables --------------------------
 precision = 5 # 5 par défaut
+
+##--Paramètres de l'onde gaussienne----
+nx = 5 # nombre de points dans l'espace
+nt = 100 # nombre de points dans le temps
+k_0 = 5 # nombre d'ondes dans la gaussienne
+a = 1 # amplitude de la gaussienne
+t = 0 # temps initial
 
 #--Fonctions---------------------------
 
@@ -43,18 +59,13 @@ def erreur(f_num : np.array, f_th : np.array):
     return np.round((abs(f_num - f_th ) / f_th) * 100, precision) # precision à 0.00001
 
 
-def Onde2d():
-    nx = 5
-    nt = 100
-    k_0 = 5
-    a = 1
-    t = 0
-    x = np.linspace(0,10,nt)
+def Onde2d(x : np.array) -> np.array:
+    """Retourne une matrice de nx lignes et nt colonnes représentant l'évolution d'une onde gaussienne dans le temps et l'espace."""
 
     ligne = GaussWP(k_0, a, x, t)
     arr = np.empty((nx,nt),dtype=complex)
 
-    arr[0,:] = GaussWP(k_0, a, x, t)
+    arr[0,:] = GaussWP(k_0, a, x)
     return arr
 
 #--Fonction principales---------------------------
@@ -65,9 +76,10 @@ def main():
     # on père 1 pt à chaque dérivée
     nb_pts = 100
     x = np.linspace(0,10,nb_pts)
-    f = np.power(x,2)
-    d2f_th = np.array(2) * (nb_pts - n_derivee)
-    df_2 = deriver(f,x,n_derivee)
+    t = np.linspace()
+    f = Onde2d()
+    d2f_x = deriver(f,x,k=2)
+    df_t = deriver(f,t)
 
     taille_finale = nb_pts - n_derivee
     d2f_th = np.full(shape=taille_finale, fill_value=2.0)
@@ -78,11 +90,12 @@ def main():
 
     print("----------------------Affichage de l'erreur de calcul----------------------")
     print("#### Si l'erreur est de 0 c'est que la précision est trop grande, essayez en une plus petite ####")
-    print(erreur(df_2,d2f_th)[:5])
 
     plt.plot(x,f, color="blue")
-    plt.plot(x,df_2, color="red")
-    plt.plot(x,d2f_th,color="green")
+    plt.plot(x,d2f_x, color="red")
+    plt.plot(t,df_t,color="green")
+    #plt.plot(x,d2f_th,color="green")
+    #plt.errorbar(x, df_2, yerr=erreur(df_2,d2f_th), fmt='o', color='red', ecolor='lightgray', elinewidth=3, capsize=0)
     plt.grid(True)
     plt.xlabel("X")
 
