@@ -88,9 +88,11 @@ def GaussWP(k_0 : float, a : float, x : np.ndarray, t : float) -> np.ndarray :
     np.ndarray
         Valeurs complexes de la fonction d'onde [1]
     """
+    x_0 = -1 # décalage
+    x_dec = x - x_0 # décalage effectif
     a_carre = a**2
     psi_0 = sqrt(a)/(TWO_PI)**(-3/4)*sqrt(pi/(a_carre/4 + 1j*H_BARRE*t/(2*M))) # [L^-1/2]
-    u = (-x**2 + 1j*(a_carre*k_0*x-(a_carre*k_0**2*H_BARRE*t)/(2*M)))/(a_carre+ 1j*(2*H_BARRE*t)/(2*M)) # [1]
+    u = (-(x_dec)**2 + 1j*(a_carre*k_0*(x_dec)-(a_carre*k_0**2*H_BARRE*t)/(2*M)))/(a_carre+ 1j*(2*H_BARRE*t)/(2*M)) # [1]
     return psi_0*exp(u) # [L^-1/2]
 
 def main():
