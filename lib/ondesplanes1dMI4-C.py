@@ -7,7 +7,7 @@
 import numpy as np
 import matplotlib.pyplot as plt 
 
-from numpy import pi,exp,sqrt,real,imag,zeros,linspace,cos
+from numpy import pi,exp
 
 TWO_PI = 2*pi
 M = 9.2e-31 # masse d'une e-

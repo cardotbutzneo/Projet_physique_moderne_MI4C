@@ -11,8 +11,8 @@ from numpy import sqrt, exp, pi
 #---Constantes numériques----------------------------------------
 # Toutes les constantes sont données avec 3 chiffres significatifs quand cela est nécessaire
 TWO_PI : float = 2*pi
-H_BARRE : float = 6.626e-34 / TWO_PI # Constante de Planck réduite [J.s]
-M : float = 9.109e-31 # Masse d'un électron [kg]
+H_BARRE : float = 1 #= 6.626e-34 / TWO_PI # Constante de Planck réduite [J.s]
+M : float = 1 #= 9.109e-31 # Masse d'un électron [kg]
 C : float = 2.99792458e8 # vitesse de la lumière dans le vide [m.s^-1]
 
 #---Constantes graphique----------------------------------------
@@ -70,30 +70,33 @@ def tracer_graphique(x : np.ndarray, psi : np.ndarray, t, a, k_0) -> None :
 
     plt.show()
 
-def GaussWP(k_0 : float, a : float, x : np.ndarray, t : float) -> np.ndarray :
+def GaussWP(k_0 : float, a : float, x : np.ndarray, t : float, x_0 : float, H_BARRE=H_BARRE, M=M) -> np.ndarray :
     """
-    Parameters
-    ----------
-    k_0 : float
-        vecteur d'onde [L^-1]
-    a : float
-        largeur initiale du paquet [L]
-    x : np.ndarray
-        liste des points à calculer
-    t : float
-        temps [T]
-
-    Returns
-    ----------
-    np.ndarray
-        Valeurs complexes de la fonction d'onde [1]
+    Paquet d'ondes gaussien normalisé en dimension 1 pour l'équation de Schrödinger libre.
+    
+    a : Paramètre de largeur initiale du paquet
+    x_0 : Position initiale du centre du paquet
     """
-    x_0 = -1 # décalage
-    x_dec = x - x_0 # décalage effectif
-    a_carre = a**2
-    psi_0 = sqrt(a)/(TWO_PI)**(-3/4)*sqrt(pi/(a_carre/4 + 1j*H_BARRE*t/(2*M))) # [L^-1/2]
-    u = (-(x_dec)**2 + 1j*(a_carre*k_0*(x_dec)-(a_carre*k_0**2*H_BARRE*t)/(2*M)))/(a_carre+ 1j*(2*H_BARRE*t)/(2*M)) # [1]
-    return psi_0*exp(u) # [L^-1/2]
+    
+    # 1. Calcul de la dispersion temporelle (étalement du paquet)
+    # On définit le terme complexe lié à l'étalement : s(t) = a^2 + 2 * j * h_barre * t / M
+    dispersion = a**2 + 2j * H_BARRE * t / M
+    
+    # 2. Vitesse de groupe et position du centre au cours du temps
+    v_g = (H_BARRE * k_0) / M
+    centre_t = x_0 + v_g * t
+    
+    # 3. Facteur de normalisation (Garantit que l'intégrale de |Psi|^2 vaut 1)
+    # L'amplitude de la crête diminue au cours du temps car le paquet s'étale
+    psi_0 = (2 * np.pi * a**2)**(-1/4) * np.sqrt(a**2 / dispersion)
+    
+    # 4. Phase et enveloppe spatiale
+    # Le premier terme gère la forme de la cloche qui s'étale autour du centre mobile.
+    # Le second terme gère la phase d'oscillation de l'onde (quantité de mouvement et énergie).
+    enveloppe = -(x - centre_t)**2 / (4 * dispersion)
+    phase_onde = 1j * k_0 * (x - x_0) - 1j * (H_BARRE * k_0**2 * t) / (2 * M)
+    
+    return psi_0 * np.exp(enveloppe + phase_onde)
 
 def main():
     try:

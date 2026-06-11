@@ -1,27 +1,15 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-from PaquetOndeGaussMI4_C import GaussWP, tracer_graphique, C #, H_BARRE, M
-
+from lib.constantes import *
+from lib.PaquetOndeGaussMI4_C import GaussWP, C , pi #, H_BARRE, M
+from lib.math_physique import erreur, verifier_normalisation
+from lib.graphique import animation
 """
 #Ce code permet de simuler l'équation de Schrödinger en 1D pour une onde gaussienne.
 
 ##Fonction : 
-- deriver : permet de calculer la dérivée d'une fonction numérique par récurence
+- : permet de calculer la dérivée d'une fonction numérique par récurence
 - erreur : permet de calculer le pourcentage d'erreur entre une fonction numérique et une
 """
-
-#--Variables --------------------------
-precision = 5 # 5 par défaut
-
-M = 1
-H_BARRE = 1 # on utilise celle la pour pas faire péter l'ordi
-##--Paramètres de l'onde gaussienne----
-nx = 350   # nombre de points dans l'espace
-nt = 1000   # nombre de points dans le temps
-k_0 = 10   # nombre d'ondes dans la gaussienne
-a = 1      # amplitude de la gaussienne
-t_0 = 0      # temps initial
 
 #--Fonctions---------------------------
 
@@ -29,45 +17,26 @@ t_0 = 0      # temps initial
 Définition de f'(a) = lim_h->0 (f(a+h) - f(a)) / h = df/dx(a) ~ (f(b) - f(a)) / (b-a)
 """
 
-def deriver(f : np.ndarray, x : np.ndarray, k : int = 1) -> np.ndarray :
-    """"
-    Revoie les points de la dérivée d'ordre n d'une fonction quelconque par récurence.
-    Attention la dimension du tableau final est de dimension (n-k) avec n le nombre de points d'entrés
-
-    f : np.ndarray
-        Tableau des ordonnées de la fonction d'origine
-    x : np.ndarray
-        Tableau des abscices de la fonction d'origne
-    k : int
-        Ordre de la dérivée, 1 par défaut
-    """
-    if (k <= 0) : 
-        return f # si k == 0, on renvoie la fonction puisque
-
-    tangente = []
-    for i in range(1,len(x)) :
-        if x[i] == x[i-1] :
-            continue
-        rapport = (f[i] - f[i-1]) / (x[i] - x[i-1])
-        tangente.append(rapport)
-    tangente_np = np.array(tangente)
-    if (k == 1) : 
-        return tangente_np
-    else : 
-        return deriver(tangente_np, x[1:],k-1)
-
-def erreur(f_num : np.array, f_th : np.array):
-    """Retourne le pourcentage d'erreur de la version numérique par rapport à la théorie."""
-    return np.round((abs(f_num - f_th ) / f_th) * 100, precision) # precision à 0.00001
 
 def Onde2d(x : np.array) -> np.array:
     """Retourne une matrice de nx lignes et nt colonnes représentant l'évolution d'une onde gaussienne dans l'espace à un t donné."""
     arr = np.empty((nt ,nx),dtype=complex)
 
-    arr[0,:] = GaussWP(k_0, a, x, t_0)
+    arr[0,:] = GaussWP(k_0, lg_initiale, x, t_0)
     return arr
 
-def propagation_onde(x : np.array, t : np.array, V : np.array) -> np.array :
+def masque_absorbant(x, largeur=3.0):
+    # Créer par Claude
+    mask = np.ones_like(x)
+    # Bord gauche
+    zone_g = x < (x[0] + largeur)
+    mask[zone_g] = np.exp(-((x[zone_g] - (x[0] + largeur)) / (largeur/3))**2)
+    # Bord droit
+    zone_d = x > (x[-1] - largeur)
+    mask[zone_d] = np.exp(-((x[zone_d] - (x[-1] - largeur)) / (largeur/3))**2)
+    return mask
+
+def propagation_onde(x : np.array, t : np.array, V : np.array, x_0 : float = -4) -> np.array :
     """
     le déplacement d'un paquet d'onde
     paramètre : 
@@ -80,92 +49,183 @@ def propagation_onde(x : np.array, t : np.array, V : np.array) -> np.array :
     dx = x[1] - x[0]
     dt = t[1] - t[0] # on peut le faire car on utilise linspace pour faire les ensembles
 
+    # Ajouter un "masque absorbant" aux bords pour éviter les réflexions
+
+    mask = masque_absorbant(x) # ajout de Claude pour masquer les erreurs de dérivée au niveau des bords
     # on simule l'équation avec l'eq de Sch
-    for j in range(0,len(t)-1): # avance dans le temps de 0 à nt-1
-        for i in range(1,len(x)-1): # on avance dans l'espace de 1 à nx-1
-            d2f_dx2 = (f[j, i+1] - 2*f[j, i] + f[j, i-1]) / dx**2
-            hamiltonien = (- H_BARRE ** 2) / (2*M) * d2f_dx2 + V[i] * f[j,i]
-            df_t = (- 1j / H_BARRE) * hamiltonien
-            f[j+1, i] = f[j, i] + dt * df_t # on modifie la ligne pour avec à l'instant t + ndt
+    for j in range(len(t)-1):
+        d2f_dx2 = (f[j, 2:] - 2*f[j, 1:-1] + f[j, :-2]) / dx**2
+        hamiltonien = (-H_BARRE**2 / (2*M)) * d2f_dx2 + V[1:-1] * f[j, 1:-1]
+        f[j+1, 1:-1] = f[j, 1:-1] + dt * (-1j / H_BARRE) * hamiltonien
+        f[j+1, :] *= mask
 
     return f
 
-def animation(x : np.array, matrice_f : np.array, t : np.array, V : np.array) -> None:
-    """Créer une animation de la fonction d'onde passée en paramètre
-    
-    Paramètres:  
+from scipy.linalg import solve_banded
+
+def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = -4) -> np.array : # fait uniquement par Claude (je n'ai pas les connaissances mathématiques pour le faire Néo)
+    """Permet de calculer la propagation du paquet d'onde via la méthode de Crank-Nicolson
+    Paramètres : 
     ------------
-    x : np.array
-        Tableau des abscices [m]
-    matrice_f : np.array
-        Matrice des valeurs prises par la fonction d'onde pour chaque valeur de t
-    t : np.array
-        Tableau des valeurs du temps [T]
-    V : np.array
-        Tableau du potentiel V(x) pour afficher la barrière [J]
+    - x : np.array
+        abscice [L]
+    - t : np.array
+        temps [T]
+    - V : np.array
+        potentiel [J] -- Tableau a 1d
+    - x_0 : float
+        position initiale [L]
     """
+    nx = len(x)
+    nt = len(t)
+    dx = x[1] - x[0]
+    dt = t[1] - t[0]
 
-    fig, axes = plt.subplots(3, 1, figsize=(10, 8))
+    r = 1j * H_BARRE * dt / (4 * M * dx**2)  # coefficient central
 
-    zeros_init = np.zeros_like(x)
+    f = np.zeros((nt, nx), dtype=complex)
+    f[0, :] = GaussWP(k_0, lg_initiale, x, t[0], x_0)
 
-    # création de ligne vide mises à jour
-    line_real, = axes[0].plot(x, zeros_init, color="blue")
-    line_imag, = axes[1].plot(x, zeros_init, color="orange")
-    line_sum,  = axes[2].plot(x, zeros_init, color="green")
+    # Matrices tridiagonales (format banded pour scipy)
+    # Matrice A (côté gauche  : implicite) : A @ f[j+1] = B @ f[j]
+    # Matrice B (côté droit   : explicite)
 
-    # --- AJOUT : Détection automatique des indices de la barrière ---
-    # On cherche où le potentiel V est supérieur à 0
+    diag_A  =  1 + 2*r + 1j*dt/(2*H_BARRE) * V
+    off_A   = -r * np.ones(nx - 1)
+
+    diag_B  =  1 - 2*r - 1j*dt/(2*H_BARRE) * V
+    off_B   =  r * np.ones(nx - 1)
+
+    # Format banded : [diagonale supérieure, diagonale, diagonale inférieure]
+    A_banded = np.zeros((3, nx), dtype=complex)
+    A_banded[0, 1:]  = off_A   # sur-diagonale
+    A_banded[1, :]   = diag_A  # diagonale
+    A_banded[2, :-1] = off_A   # sous-diagonale
+
+    mask = masque_absorbant(x)  # ton masque absorbant aux bords
+
+    for j in range(nt - 1):
+        # Calcul du membre de droite : B @ f[j]
+        rhs = diag_B * f[j]
+        rhs[1:]  += off_B * f[j, :-1]
+        rhs[:-1] += off_B * f[j, 1:]
+
+        # Résolution du système tridiagonal
+        f[j+1] = solve_banded((1, 1), A_banded, rhs)
+        f[j+1] *= mask
+
+    # 1. On trouve l'indice X de la fin de ta barrière de potentiel
+    # On cherche le dernier endroit où V(x) n'est pas nul
     indices_barriere = np.where(V > 0)[0]
     
-    for ax in axes:
-        ax.set_xlim(x[0], x[-1])
-        # On calcule le max de la fonction d'onde absolue pour caler l'axe Y
-        ymax = np.max(np.abs(matrice_f)) * 1.2
-        ax.set_ylim(-ymax, ymax)
-        ax.grid(True)
-        
-        # --- LIGNES MODIFIÉES : Dessin du rectangle à la hauteur réelle de V ---
-        # 1. On trace la ligne du potentiel (marche d'escalier) en rouge
-        ax.plot(x, V, color='red', linestyle='-', linewidth=2, label='Potentiel V(x)')
-        
-        # 2. On remplit le rectangle entre le sol (y=0) et le sommet (y=V)
-        ax.fill_between(x, 0, V, color='red', alpha=0.15)
+    if len(indices_barriere) == 0:
+        print("Pas de barrière détectée dans V(x).")
+        t_passage = None
+    else:
+        x_fin_barriere = x[indices_barriere[-1]] # La coordonnée X de sortie de barrière
+        print(f"test : {x_fin_barriere}")
+        t_passage = None
 
-    axes[0].set_title("Partie Réelle")
-    axes[1].set_title("Partie Imaginaire")
-    axes[2].set_title("Somme (Réelle + Imaginaire)")
+        # 2. On parcourt chaque instant t (chaque ligne j) pour suivre le sommet
+        for j in range(nt):
+            densite_proba = np.abs(f[j, :])**2
+            
+            # On trouve l'indice X où la probabilité est maximale à cet instant précis
+            indice_pic = np.argmax(densite_proba)
+            position_pic = x[indice_pic]
+            
+            # Si le sommet du paquet vient de dépasser la fin de la barrière : BINGO !
+            if position_pic > x_fin_barriere:
+                t_passage = t[j]
+                break # On arrête la recherche dès qu'il est passé
 
-    # Fonction appelée à chaque frame (chaque instant j)
-    def update(j):
-        psi_actuel = matrice_f[j, :]
-        
-        # Mise à jour des données des courbes
-        line_real.set_data(x, psi_actuel.real)
-        line_imag.set_data(x, psi_actuel.imag)
-        line_sum.set_data(x, psi_actuel.real + psi_actuel.imag)
-        
-        fig.suptitle(f"Évolution du Paquet d'ondes - t = {t[j]:.3f} s", fontsize=14, fontweight="bold")
-        return line_real, line_imag, line_sum
+    if t_passage is not None:
+        print(f"Le sommet du paquet d'onde passe la barrière à t = {t_passage:.4f} s")
+    else:
+        print("Le paquet d'onde n'a pas franchi la barrière (Réflexion totale ou simulation trop courte).")
 
-    # Création de l'animation (interval = temps en ms entre chaque image)
-    ani = FuncAnimation(fig, update, frames=len(t), interval=20, blit=True)
-    plt.tight_layout()
-    plt.show()
+    return f, t_passage
+
+def paquet_onde_théorique(x, t, a):
+    coeff = (1 / (8*pi**3)) ** 1/4 * np.sqrt(4*pi*M*a / (M*a**2 + 2j*H_BARRE*t))
+    exp = np.exp(M*((a**2*k_0+ 2j*x)**2) / (4*(M*a**2 + 2j*H_BARRE*t)) - (a**2*k_0**2)/4)
+    return np.abs(coeff * exp)**2
 
 #--Fonction principales---------------------------
 
 def main():
-    x = np.linspace(-10,10,nx)
-    t = np.linspace(0,0.2,nt) 
-    a = 1
-    V_0 = 15
+
+    # E = h*nu = h * c / lambda
+    # E >> V_0 => E >> 10.0 >> lambda << c*h / 10.0 => lambda ~ 
+
+    while True:
+        print("Type de simulation : (entrez 1 ou 2)")
+        print("-" * 20)
+        print("1. Simulation maison")
+        print("2. Simulation optimisée")
+        print("q pour quitter")
+
+        reponse = input("Choix : ")
+
+        if reponse == "q" or reponse == "" : 
+            print("Arret du programme...")
+            exit(0)
+
+        if int(reponse) in [1,2]:
+            reponse = int(reponse)
+            break
+        else :
+            print("Erreur, veuillez réessayer...")
+        
+    borne = 25
+    x = np.linspace(-np.abs(borne),np.abs(borne),nx)
+    a_barriere = 5.0
+    x_0 = -4.0
+    V_0 = 0.0 # on test dans le cas d'une barrière nulle
+    # on peut prendre V_0 = 20.0 et a = 1.0 ca marche bien
     V = np.zeros_like(x)
-    V[(x >= 0) & (x <= a)] = V_0
+    V[(x >= 0) & (x <= a_barriere)] = V_0
+
+    if reponse == 1 : 
+        t_max = 0.2
+        t = np.linspace(0,t_max,nt) 
+        f, t_passage = propagation_onde(x,t,V)
+        tolerance = 1e-02
+
+    elif reponse == 2 : 
+        t_max = 2
+        t = np.linspace(0,t_max,nt) 
+        f, t_passage = propagation_onde_CN(x,t,V) #propagation_onde(x,t,V)
+        tolerance = 1e-5
+
+    print("Début de la simuation avec les paramètres : ")
+    print("-" * 20)
+    print(f"t_max   = {float(t_max)} s")
+    print(f"V_0     = {float(V_0)} J")
+    print(f"a       = {float(lg_initiale)} m")
+    print(f"x_0     = {x_0} m")
+
+
+    if not verifier_normalisation(x,f,tolerance):
+        print("La fonction n'est pas normalisée !")
+        exit(1)
     
-    f = propagation_onde(x,t,V)
-    
-    # MODIFICATION ICI : On passe V à l'animation
-    animation(x, f, t, V)
+    animation(x, f, t, V, V_0)
+
+    if t_passage == None or t_passage == np.inf:
+        t_passage = np.nan
+
+    vg = (H_BARRE * k_0) / M # vitesse de groupe théorique
+    print(f"vg théorique    : {vg} m^s-1")
+    print(f"distance totale : {np.abs(x_0) + a_barriere} m")
+    print(f"---> temps théorique : {(np.abs(x_0) + a_barriere) / vg} s")
+    print(f"---> temps simulé    : {t_passage:.3g} s")
+    print(f"Erreur de temps : {erreur((np.abs(x_0) + a_barriere) / vg, t_passage)}%")
 
 main()
+
+# note séance 11/06
+# tester programme avec V_0 = 0 et confronter avec Gauss x
+# indiquer l'énegie moyenne
+# afficher E/V_0
+# cherche t tel que l'onde passe la barrière -> vérifier la valeur numérique avec la valeur théorique en utilisant la vistesse de groupe
