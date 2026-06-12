@@ -120,24 +120,26 @@ def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = 
     
     if len(indices_barriere) == 0:
         print("Pas de barrière détectée dans V(x).")
-        t_passage = None
-    else:
+        x_fin_barriere = a_barriere
+
+    else :
         x_fin_barriere = x[indices_barriere[-1]] # La coordonnée X de sortie de barrière
         print(f"test : {x_fin_barriere}")
-        t_passage = None
+    
+    t_passage = None
 
-        # 2. On parcourt chaque instant t (chaque ligne j) pour suivre le sommet
-        for j in range(nt):
-            densite_proba = np.abs(f[j, :])**2
-            
-            # On trouve l'indice X où la probabilité est maximale à cet instant précis
-            indice_pic = np.argmax(densite_proba)
-            position_pic = x[indice_pic]
-            
-            # Si le sommet du paquet vient de dépasser la fin de la barrière : BINGO !
-            if position_pic > x_fin_barriere:
-                t_passage = t[j]
-                break # On arrête la recherche dès qu'il est passé
+    # 2. On parcourt chaque instant t (chaque ligne j) pour suivre le sommet
+    for j in range(nt):
+        densite_proba = np.abs(f[j, :])**2
+        
+        # On trouve l'indice X où la probabilité est maximale à cet instant précis
+        indice_pic = np.argmax(densite_proba)
+        position_pic = x[indice_pic]
+        
+        # Si le sommet du paquet vient de dépasser la fin de la barrière : BINGO !
+        if position_pic > x_fin_barriere:
+            t_passage = t[j]
+            break # On arrête la recherche dès qu'il est passé
 
     if t_passage is not None:
         print(f"Le sommet du paquet d'onde passe la barrière à t = {t_passage:.4f} s")
@@ -179,9 +181,8 @@ def main():
         
     borne = 25
     x = np.linspace(-np.abs(borne),np.abs(borne),nx)
-    a_barriere = 5.0
     x_0 = -4.0
-    V_0 = 0.0 # on test dans le cas d'une barrière nulle
+    V_0 = 20.0 # on test dans le cas d'une barrière nulle
     # on peut prendre V_0 = 20.0 et a = 1.0 ca marche bien
     V = np.zeros_like(x)
     V[(x >= 0) & (x <= a_barriere)] = V_0
@@ -193,7 +194,7 @@ def main():
         tolerance = 1e-02
 
     elif reponse == 2 : 
-        t_max = 2
+        t_max = 2.5
         t = np.linspace(0,t_max,nt) 
         f, t_passage = propagation_onde_CN(x,t,V) #propagation_onde(x,t,V)
         tolerance = 1e-5
@@ -202,7 +203,7 @@ def main():
     print("-" * 20)
     print(f"t_max   = {float(t_max)} s")
     print(f"V_0     = {float(V_0)} J")
-    print(f"a       = {float(lg_initiale)} m")
+    print(f"a       = {float(a_barriere)} m")
     print(f"x_0     = {x_0} m")
 
 

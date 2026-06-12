@@ -58,8 +58,8 @@ def animation(x : np.array, matrice_f : np.array, t : np.array, V : np.array, V_
     ax_energy.legend(loc="upper right", fontsize=9)
 
     # Petit texte d'information sur le régime quantique dans le graphique du bas
-    texte_regime = rf"Régime : Sur-barrière ($\langle E \rangle > V_0$)" if energie_moyenne > V_0 else fr"Régime : Effet Tunnel ($\langle E \rangle < V_0$)"
-    ax_energy.text(0.02, 0.08, rf"{texte_regime}\nRapport $\langle E \rangle / V_0 = {rapport:.2f}$", 
+    texte_regime = r"Régime : Sur-barrière ($\langle E \rangle > V_0$)" if energie_moyenne > V_0 else r"Régime : Effet Tunnel ($\langle E \rangle < V_0$)"
+    ax_energy.text(0.02, 0.08, rf"{texte_regime} \n Rapport $\langle E \rangle / V_0 = {rapport:.2f}$", 
                    transform=ax_energy.transAxes, fontsize=10, fontweight="bold", 
                    bbox=dict(facecolor='white', alpha=0.8, boxstyle='round,pad=0.5'))
 
