@@ -8,4 +8,4 @@ k_0 = 8             # nombre d'ondes dans la gaussienne
 lg_initiale = 1     # largeur du paquet d'onde
 t_0 = 0             # temps initial [T]
 distance = 2        # distance que l'onde doit parcourir [L]
-a_barriere = 1.0  # 
+a_barriere = 0.5 # 

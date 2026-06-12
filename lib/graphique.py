@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from lib.constantes import *
+from lib.math_physique import calculer_RT
 
 # Note : Pense à passer k_0 et lg_initiale en paramètres pour que la fonction reste autonome
 def animation(x : np.array, matrice_f : np.array, t : np.array, V : np.array, V_0 : float) -> None:
@@ -61,6 +62,9 @@ def animation(x : np.array, matrice_f : np.array, t : np.array, V : np.array, V_
     texte_regime = r"Régime : Sur-barrière ($\langle E \rangle > V_0$)" if energie_moyenne > V_0 else r"Régime : Effet Tunnel ($\langle E \rangle < V_0$)"
     ax_energy.text(0.02, 0.08, rf"{texte_regime} \n Rapport $\langle E \rangle / V_0 = {rapport:.2f}$", 
                    transform=ax_energy.transAxes, fontsize=10, fontweight="bold", 
+                   bbox=dict(facecolor='white', alpha=0.8, boxstyle='round,pad=0.5'))
+    R,T = calculer_RT(x,matrice_f,True,True)
+    ax_energy.text(0.02,0.2, rf"Réflexion : {R*100:.2g}% | Transmission : {T*100:.2g}%",transform=ax_energy.transAxes, fontsize=10, fontweight="bold", 
                    bbox=dict(facecolor='white', alpha=0.8, boxstyle='round,pad=0.5'))
 
     # -------------------------------------------------------------

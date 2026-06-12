@@ -1,7 +1,8 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from lib.constantes import *
 from lib.PaquetOndeGaussMI4_C import GaussWP, C , pi #, H_BARRE, M
-from lib.math_physique import erreur, verifier_normalisation
+from lib.math_physique import erreur, verifier_normalisation, calculer_RT
 from lib.graphique import animation
 """
 #Ce code permet de simuler l'équation de Schrödinger en 1D pour une onde gaussienne.
@@ -63,18 +64,24 @@ def propagation_onde(x : np.array, t : np.array, V : np.array, x_0 : float = -4)
 
 from scipy.linalg import solve_banded
 
-def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = -4) -> np.array : # fait uniquement par Claude (je n'ai pas les connaissances mathématiques pour le faire Néo)
+def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = -4) -> tuple:
     """Permet de calculer la propagation du paquet d'onde via la méthode de Crank-Nicolson
+    
     Paramètres : 
     ------------
     - x : np.array
-        abscice [L]
+        Axe spatial [L]
     - t : np.array
-        temps [T]
+        Tableau des instants temporels [T]
     - V : np.array
-        potentiel [J] -- Tableau a 1d
+        Tableau du potentiel V(x) à 1D [J]
     - x_0 : float
-        position initiale [L]
+        Position initiale du centre du paquet d'ondes [L]
+        
+    Retourne :
+    ----------
+    - f : np.array (matrice complexe de taille nt x nx)
+    - t_passage : float (ou None)
     """
     nx = len(x)
     nt = len(t)
@@ -87,9 +94,6 @@ def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = 
     f[0, :] = GaussWP(k_0, lg_initiale, x, t[0], x_0)
 
     # Matrices tridiagonales (format banded pour scipy)
-    # Matrice A (côté gauche  : implicite) : A @ f[j+1] = B @ f[j]
-    # Matrice B (côté droit   : explicite)
-
     diag_A  =  1 + 2*r + 1j*dt/(2*H_BARRE) * V
     off_A   = -r * np.ones(nx - 1)
 
@@ -102,47 +106,66 @@ def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = 
     A_banded[1, :]   = diag_A  # diagonale
     A_banded[2, :-1] = off_A   # sous-diagonale
 
-    mask = masque_absorbant(x)  # ton masque absorbant aux bords
+    mask = masque_absorbant(x)  # Masque absorbant aux bords aux limites du réseau
 
+    # --- Boucle temporelle de résolution ---
     for j in range(nt - 1):
-        # Calcul du membre de droite : B @ f[j]
+        # Calcul du membre de droite (explicite) : B @ f[j]
         rhs = diag_B * f[j]
         rhs[1:]  += off_B * f[j, :-1]
         rhs[:-1] += off_B * f[j, 1:]
 
-        # Résolution du système tridiagonal
+        # Résolution implicite du système tridiagonal
         f[j+1] = solve_banded((1, 1), A_banded, rhs)
         f[j+1] *= mask
 
-    # 1. On trouve l'indice X de la fin de ta barrière de potentiel
-    # On cherche le dernier endroit où V(x) n'est pas nul
+    # --- Détection du temps de passage à droite ---
     indices_barriere = np.where(V > 0)[0]
     
     if len(indices_barriere) == 0:
-        print("Pas de barrière détectée dans V(x).")
-        x_fin_barriere = a_barriere
-
-    else :
-        x_fin_barriere = x[indices_barriere[-1]] # La coordonnée X de sortie de barrière
-        print(f"test : {x_fin_barriere}")
+        print("Pas de barrière détectée dans V(x). Capteur calé sur x = 0.")
+        x_fin_barriere = 0.0
+    else:
+        x_fin_barriere = x[indices_barriere[-1]] # Coordonnée X de sortie de barrière
     
+    # Isolation de la zone située strictement après l'obstacle
+    masque_droite = (x > x_fin_barriere)
+    x_zone_droite = x[masque_droite]
+
     t_passage = None
 
-    # 2. On parcourt chaque instant t (chaque ligne j) pour suivre le sommet
+    # Parcours des résultats pour suivre le pic transmis
+    # Parcours des résultats pour suivre le pic transmis
     for j in range(nt):
-        densite_proba = np.abs(f[j, :])**2
+        densite_proba_droite = np.abs(f[j, masque_droite])**2
         
-        # On trouve l'indice X où la probabilité est maximale à cet instant précis
-        indice_pic = np.argmax(densite_proba)
-        position_pic = x[indice_pic]
+        if len(densite_proba_droite) == 0:
+            continue
+            
+        # --- CORRECTION DU SEUIL ---
+        # On n'analyse la zone que si le pic à droite est supérieur à 1% 
+        # de la hauteur maximale globale de l'onde au même instant.
+        # Cela élimine mathématiquement la "queue" de la gaussienne de départ.
+        max_global_instant_t = np.max(np.abs(f[j, :])**2)
+        seuil_detection = max_global_instant_t * 0.01 
         
-        # Si le sommet du paquet vient de dépasser la fin de la barrière : BINGO !
-        if position_pic > x_fin_barriere:
+        if np.max(densite_proba_droite) < seuil_detection:
+            continue
+            
+        # Repérage du sommet local à droite
+        indice_pic_droite = np.argmax(densite_proba_droite)
+        position_pic_droite = x_zone_droite[indice_pic_droite]
+        
+        # Validation du franchissement effectif
+        if position_pic_droite > (x_fin_barriere + 0.1): 
             t_passage = t[j]
-            break # On arrête la recherche dès qu'il est passé
+            break
 
+    # --- Affichage du bilan textuel ---
     if t_passage is not None:
+        atténuation_pic = np.max(np.abs(f[0,:])**2) - np.max(np.abs(f[j,:])**2)
         print(f"Le sommet du paquet d'onde passe la barrière à t = {t_passage:.4f} s")
+        print(f"Diminution de la hauteur du pic : {atténuation_pic:.4f} (dispersion + réflexion)")
     else:
         print("Le paquet d'onde n'a pas franchi la barrière (Réflexion totale ou simulation trop courte).")
 
@@ -152,6 +175,60 @@ def paquet_onde_théorique(x, t, a):
     coeff = (1 / (8*pi**3)) ** 1/4 * np.sqrt(4*pi*M*a / (M*a**2 + 2j*H_BARRE*t))
     exp = np.exp(M*((a**2*k_0+ 2j*x)**2) / (4*(M*a**2 + 2j*H_BARRE*t)) - (a**2*k_0**2)/4)
     return np.abs(coeff * exp)**2
+
+def générer_T(x : np.array, t : np.array) -> None:
+    """Génère un graphique du coefficient de transmission T et de réflexion R en fonction de E / V_0"""
+
+    nb_pts = 25
+    # On fait varier V_0 (la hauteur de la barrière)
+    tab_V_0 = np.linspace(5, 35, nb_pts)
+    
+    # Calcul de l'énergie moyenne (constante) du paquet d'ondes
+    energie_moyenne = (H_BARRE**2 * k_0**2) / (2 * M) + (H_BARRE**2) / (2 * M * (lg_initiale**2))
+    
+    tous_les_T = []
+
+    # On lance une simulation pour chaque valeur de V_0
+    for i, v0 in enumerate(tab_V_0):
+        print(f"Simulation {i+1}/{nb_pts} pour V_0 = {v0:.2f} J...")
+        
+        V_actuel = np.zeros_like(x)
+
+        V_actuel[(x >= 0) & (x <= a_barriere)] = v0 
+        
+        f, _ = propagation_onde_CN(x, t, V_actuel)
+        
+        # R=False, T=True pour ne récupérer que la transmission
+        T = calculer_RT(x, f, R=False, T=True)
+        tous_les_T.append(T)
+    
+    tous_les_T = np.array(tous_les_T)
+    tous_les_R = 1 - tous_les_T
+    # Calcul du rapport E / V_0 pour l'axe X du graphique
+    rapport_E_V0 = energie_moyenne / tab_V_0
+
+    # -------------------------------------------------------------
+    # CONFIGURATION DU GRAPHIQUE
+    # -------------------------------------------------------------
+    plt.figure(figsize=(8, 5))
+    plt.grid(True, linestyle="--", alpha=0.7)
+    
+    # On trace T en fonction de E / V_0
+    plt.plot(rapport_E_V0, tous_les_T, 'o-', color="purple", linewidth=2, label="Transmission numérique")
+    plt.plot(rapport_E_V0, tous_les_R, 'o-', color="green", linewidth=2, label="Réflexion numérique")
+    plt.plot()
+    
+    # Une ligne verticale à E/V_0 = 1 pour séparer l'effet tunnel du régime classique
+    plt.axvline(x=1.0, color="red", linestyle="--", label="Limite classique ($E = V_0$)")
+    
+    plt.xlabel(r"Rapport Énergétique $\langle E \rangle / V_0$", fontsize=11)
+    plt.ylabel("Coefficient de Transmission $T$", fontsize=11)
+    plt.title(r"Coefficient de Transmission et de Réflexion en fonction de $\langle E \rangle / V_0$", fontsize=12, fontweight="bold")
+    plt.legend(loc="best")
+    
+    plt.show()
+
+
 
 #--Fonction principales---------------------------
 
@@ -165,6 +242,7 @@ def main():
         print("-" * 20)
         print("1. Simulation maison")
         print("2. Simulation optimisée")
+        print("3. générer pour une liste de V_0 (entre 5 et 35 J)")
         print("q pour quitter")
 
         reponse = input("Choix : ")
@@ -173,16 +251,16 @@ def main():
             print("Arret du programme...")
             exit(0)
 
-        if int(reponse) in [1,2]:
+        if int(reponse) in [1,2,3]:
             reponse = int(reponse)
             break
         else :
             print("Erreur, veuillez réessayer...")
         
-    borne = 25
+    borne = 50
     x = np.linspace(-np.abs(borne),np.abs(borne),nx)
     x_0 = -4.0
-    V_0 = 20.0 # on test dans le cas d'une barrière nulle
+    V_0 = 20 # on test dans le cas d'une barrière nulle
     # on peut prendre V_0 = 20.0 et a = 1.0 ca marche bien
     V = np.zeros_like(x)
     V[(x >= 0) & (x <= a_barriere)] = V_0
@@ -198,6 +276,12 @@ def main():
         t = np.linspace(0,t_max,nt) 
         f, t_passage = propagation_onde_CN(x,t,V) #propagation_onde(x,t,V)
         tolerance = 1e-5
+    
+    elif reponse == 3:
+        t_max = 5
+        t = np.linspace(0,t_max,nt) 
+        générer_T(x,t)
+        return
 
     print("Début de la simuation avec les paramètres : ")
     print("-" * 20)
@@ -222,6 +306,8 @@ def main():
     print(f"---> temps théorique : {(np.abs(x_0) + a_barriere) / vg} s")
     print(f"---> temps simulé    : {t_passage:.3g} s")
     print(f"Erreur de temps : {erreur((np.abs(x_0) + a_barriere) / vg, t_passage)}%")
+    R,T = calculer_RT(x,f,True,True)
+    print(f"R = {R*100:.2g}% | T = {T*100:.2g}%")
 
 main()
 
@@ -229,4 +315,6 @@ main()
 # tester programme avec V_0 = 0 et confronter avec Gauss x
 # indiquer l'énegie moyenne
 # afficher E/V_0
-# cherche t tel que l'onde passe la barrière -> vérifier la valeur numérique avec la valeur théorique en utilisant la vistesse de groupe
+# cherche t tel que l'onde passe la barrière -> vérifier la valeur numérique
+# calculer la réfléxion en prenant la crete des deux ondes
+# la largeur de la barriere n'influe pas sur la transmission ou la reflexion, mais sur la hauteur de la crete

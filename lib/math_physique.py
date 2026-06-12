@@ -60,3 +60,34 @@ def verifier_normalisation(x: np.ndarray, f: np.ndarray, tol: float = 1e-2) -> b
 
     print("Fonction normalisée")
     return True
+
+def calculer_RT(x : np.array, f : np.array, R = True, T = False) -> float : 
+    """Retourne le coefficient de réfléxion et/ou celui de transmission pour la dernière valeur de t
+    --------
+    x : tableau 1d [M] -- abscice
+    f : tableau 2d (nt*nx) -- la fonction d'onde
+    R : bool -- réflexion 
+    T : bool -- transission
+    """
+
+    if (not R and not T) : 
+        print("La fonction doit prendre au moin un parametre en True")
+        return -1.0, -1.0
+    
+    if (len(f) <= 0):
+        print("La fonction d'onde ne peut pas être vide")
+        return -1.0, -1.0
+
+    zone_negative = x[x <= 0] # utile pour la réflexion
+    indice_negatif = np.where(x <= 0)[0]
+    reflexion = np.trapz(np.abs(f[-1,indice_negatif])**2,zone_negative) # on calcul l'intégrale pour la réflexion (le + simple)
+    transmission = 1 - reflexion
+
+    if R and T :
+        return reflexion, transmission
+    if R:
+        return reflexion
+    elif T:
+        return transmission
+    
+    return 0.0, 0.0
