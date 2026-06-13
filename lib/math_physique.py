@@ -91,3 +91,38 @@ def calculer_RT(x : np.array, f : np.array, R = True, T = False) -> float :
         return transmission
     
     return 0.0, 0.0
+
+def calculer_RT2(x: np.array, f: np.array, R=True, T=False):
+    """
+    Calcule les coefficients de réflexion et de transmission par intégration
+    de la densité de probabilité |psi|² à la dernière frame.
+    """
+
+    if not R and not T:
+        print("La fonction doit prendre au moins un paramètre en True")
+        return -1.0, -1.0
+
+    if f is None or len(f) <= 0:
+        print("La fonction d'onde ne peut pas être vide")
+        return -1.0, -1.0
+
+    densite = np.abs(f[-1, :])**2
+
+    masque_R = x < 0
+    masque_barriere = (x >= 0) & (x <= a_barriere)
+    masque_T = x > a_barriere
+
+    reflexion = np.trapz(densite[masque_R], x[masque_R])
+    transmission = np.trapz(densite[masque_T], x[masque_T])
+    proba_barriere = np.trapz(densite[masque_barriere], x[masque_barriere])
+    proba_totale = np.trapz(densite, x)
+
+    print(f"Probabilité totale restante = {proba_totale * 100:.2f}%")
+    print(f"Probabilité dans la barrière = {proba_barriere * 100:.2f}%")
+
+    if R and T:
+        return reflexion, transmission
+    elif R:
+        return reflexion
+    elif T:
+        return transmission
