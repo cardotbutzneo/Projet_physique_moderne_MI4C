@@ -475,8 +475,16 @@ def main():
         
     borne = 50
     x = np.linspace(-np.abs(borne),np.abs(borne),nx)
+    dx = x[1] - x[0]
+    lambda_0 = 2 * np.pi / k_0
+
+    print(f"dx = {dx}")
+    print(f"lambda_0 = {lambda_0}")
+    print(f"Nombre de points par longueur d'onde = {lambda_0 / dx}")
+    print(f"k_0 * dx = {k_0 * dx}")
+
     x_0 = -4.0
-    V_0 = 35 # on test dans le cas d'une barrière nulle
+    V_0 = 20 # on test dans le cas d'une barrière nulle
     # on peut prendre V_0 = 20.0 et a = 1.0 ca marche bien
     V = np.zeros_like(x)
     V[(x >= 0) & (x <= a_barriere)] = V_0
@@ -534,8 +542,15 @@ def main():
         zone="droite",
         afficher_graphes=True
     )
-    
-    animation(x, f, t, V, V_0)
+
+    print("Vitesse numérique du pic : {:.6g} m/s".format(vitesses_num))
+
+    if erreur(vitesses_num, vg_pic) < 5.0:
+        print("La vitesse numérique est correcte (erreur < 5%)")
+    else:
+        print("La vitesse numérique est incorrecte (erreur > 5%)")
+
+    #animation(x, f, t, V, V_0)
 
     if t_passage == None or t_passage == np.inf:
         t_passage = np.nan
