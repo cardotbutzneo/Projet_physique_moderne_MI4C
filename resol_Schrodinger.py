@@ -1,8 +1,9 @@
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from lib.constantes import *
 from lib.PaquetOndeGaussMI4_C import GaussWP, C , pi #, H_BARRE, M
-from lib.math_physique import erreur, verifier_normalisation, calculer_RT, calculer_RT2
+from lib.math_physique import *
 from lib.graphique import animation
 """
 #Ce code permet de simuler l'équation de Schrödinger en 1D pour une onde gaussienne.
@@ -123,51 +124,26 @@ def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = 
     indices_barriere = np.where(V > 0)[0]
     
     if len(indices_barriere) == 0:
-        print("Pas de barrière détectée dans V(x). Capteur calé sur x = 0.")
-        x_fin_barriere = 0.0
+        print(f"Pas de barrière détectée dans V(x). Capteur calé sur x = {a_barriere}m.")
+        x_fin_barriere = a_barriere
     else:
         x_fin_barriere = x[indices_barriere[-1]] # Coordonnée X de sortie de barrière
-    
-    # Isolation de la zone située strictement après l'obstacle
-    masque_droite = (x > x_fin_barriere)
-    x_zone_droite = x[masque_droite]
 
-    t_passage = None
+    t_passage = detecter_temps_passage(x, t, f, x_ligne_arrivee=a_barriere, seuil_relatif=0.05)
+    j_detecte = np.argmin(np.abs(t - t_passage))
 
-    # Parcours des résultats pour suivre le pic transmis
-    # Parcours des résultats pour suivre le pic transmis
-    for j in range(nt):
-        densite_proba_droite = np.abs(f[j, masque_droite])**2
-        
-        if len(densite_proba_droite) == 0:
-            continue
-            
-        # --- CORRECTION DU SEUIL ---
-        # On n'analyse la zone que si le pic à droite est supérieur à 1% 
-        # de la hauteur maximale globale de l'onde au même instant.
-        # Cela élimine mathématiquement la "queue" de la gaussienne de départ.
-        max_global_instant_t = np.max(np.abs(f[j, :])**2)
-        seuil_detection = max_global_instant_t * 0.01 
-        
-        if np.max(densite_proba_droite) < seuil_detection:
-            continue
-            
-        # Repérage du sommet local à droite
-        indice_pic_droite = np.argmax(densite_proba_droite)
-        position_pic_droite = x_zone_droite[indice_pic_droite]
-        
-        # Validation du franchissement effectif
-        if position_pic_droite > (x_fin_barriere + 0.1): 
-            t_passage = t[j]
-            break
+    densite_a_detection = np.abs(f[j_detecte, :])**2
+    indice_pic_global = np.argmax(densite_a_detection)
+    position_pic_reel = x[indice_pic_global]
 
-    # --- Affichage du bilan textuel ---
+    print(f"t_passage détecté : {t_passage:.4f}s")
+    print(f"Position du PIC RÉEL (sur tout x) à cet instant : {position_pic_reel:.3f}m")
+    print(f"x_ligne_arrivee : {a_barriere}")
+
     if t_passage is not None:
-        atténuation_pic = np.max(np.abs(f[0,:])**2) - np.max(np.abs(f[j,:])**2)
-        print(f"Le sommet du paquet d'onde passe la barrière à t = {t_passage:.4f} s")
-        print(f"Diminution de la hauteur du pic : {atténuation_pic:.4f} (dispersion + réflexion)")
+        print(f"\n[Capteur numérique] Ligne d'arrivée x = {x_fin_barriere:.2f} franchie à t = {t_passage:.4f} s")
     else:
-        print("Le paquet d'onde n'a pas franchi la barrière (Réflexion totale ou simulation trop courte).")
+        print(f"\nLe paquet d'onde n'a pas atteint la ligne d'arrivée x = {x_fin_barriere:.2f}.")
 
     return f, t_passage
 
@@ -228,227 +204,10 @@ def générer_T(x : np.array, t : np.array) -> None:
     
     plt.show()
 
-# -------------------------------------------------------------------------
-# SUIVI DU PIC DU PAQUET D'ONDE
-# -------------------------------------------------------------------------
-# Objectif :
-# - récupérer la position du maximum de densité |psi(x,t)|² à chaque frame
-# - calculer la vitesse numérique entre deux frames
-# - comparer cette vitesse à la vitesse de groupe théorique :
-#       vg = H_BARRE * k_0 / M
-# -------------------------------------------------------------------------
-
-def suivre_pic(x, t, f, V=None, zone="tout", seuil_relatif=0.01):
-    """
-    Suit la position du pic du paquet d'onde à chaque instant.
-
-    Paramètres
-    ----------
-    x : np.array
-        Tableau des positions spatiales.
-
-    t : np.array
-        Tableau des temps.
-
-    f : np.array complex
-        Fonction d'onde simulée.
-        Sa taille est normalement (nt, nx).
-        Chaque ligne f[j, :] correspond à une frame temporelle.
-
-    V : np.array ou None
-        Potentiel V(x).
-        Il sert à détecter la position de la barrière si on veut suivre
-        uniquement la partie gauche ou droite de l'espace.
-
-    zone : str
-        Zone dans laquelle on cherche le pic.
-        - "tout"   : cherche le pic sur tout l'espace.
-        - "gauche" : cherche le pic avant la barrière.
-        - "droite" : cherche le pic après la barrière.
-
-    seuil_relatif : float
-        Seuil de détection du pic.
-        Exemple : 0.01 signifie qu'on ignore les pics dont la hauteur est
-        inférieure à 1% du maximum global de la frame.
-        Cela évite de suivre une toute petite queue numérique de l'onde.
-
-    Retour
-    ------
-    positions_pic : np.array
-        Tableau contenant la position x du pic pour chaque frame.
-        Si le pic n'est pas fiable pour une frame, on met np.nan.
-    """
-
-    # On crée un tableau rempli de np.nan.
-    # np.nan signifie : "pas de pic fiable détecté pour cette frame".
-    positions_pic = np.full(len(t), np.nan)
-
-    # ---------------------------------------------------------------------
-    # Choix de la zone d'analyse
-    # ---------------------------------------------------------------------
-    # Si zone = "tout", on cherche le pic sur tout l'axe x.
-    if zone == "tout" or V is None:
-        masque_zone = np.ones_like(x, dtype=bool)
-
-    # Si zone = "droite", on cherche seulement après la barrière.
-    elif zone == "droite":
-        indices_barriere = np.where(V > 0)[0]
-
-        # Si aucune barrière n'est détectée, on considère par défaut
-        # que la séparation gauche/droite est autour de x = 0.
-        if len(indices_barriere) == 0:
-            x_fin_barriere = 0.0
-        else:
-            # Dernier point où V > 0 : fin de la barrière.
-            x_fin_barriere = x[indices_barriere[-1]]
-
-        # On garde seulement les points situés après la barrière.
-        masque_zone = x > x_fin_barriere
-
-    # Si zone = "gauche", on cherche seulement avant la barrière.
-    elif zone == "gauche":
-        indices_barriere = np.where(V > 0)[0]
-
-        if len(indices_barriere) == 0:
-            x_debut_barriere = 0.0
-        else:
-            # Premier point où V > 0 : début de la barrière.
-            x_debut_barriere = x[indices_barriere[0]]
-
-        # On garde seulement les points situés avant la barrière.
-        masque_zone = x < x_debut_barriere
-
-    else:
-        raise ValueError("zone doit être 'tout', 'gauche' ou 'droite'")
-
-    # Axe x restreint à la zone choisie.
-    x_zone = x[masque_zone]
-
-    # ---------------------------------------------------------------------
-    # Parcours de toutes les frames temporelles
-    # ---------------------------------------------------------------------
-    for j in range(len(t)):
-
-        # Densité de probabilité :
-        # rho(x,t) = |psi(x,t)|²
-        densite = np.abs(f[j, :])**2
-
-        # On restreint la densité à la zone choisie.
-        densite_zone = densite[masque_zone]
-
-        # Sécurité : si la zone est vide, on passe à la frame suivante.
-        if len(densite_zone) == 0:
-            continue
-
-        # Maximum global sur toute la frame.
-        # Il sert de référence pour le seuil relatif.
-        max_global = np.max(densite)
-
-        # Si le maximum dans la zone choisie est trop faible,
-        # on considère qu'il ne s'agit pas d'un vrai paquet détectable.
-        if np.max(densite_zone) < seuil_relatif * max_global:
-            continue
-
-        # np.argmax donne l'indice du maximum de densité dans la zone.
-        indice_pic = np.argmax(densite_zone)
-
-        # On convertit cet indice en position réelle x.
-        positions_pic[j] = x_zone[indice_pic]
-
-    return positions_pic
-
-
-def analyser_vitesse_pic(x, t, f, V, zone="tout", afficher_graphes=True):
-    """
-    Analyse la vitesse du pic du paquet d'onde.
-
-    Cette fonction :
-    - récupère la position du pic à chaque frame ;
-    - ajuste une droite sur la partie linéaire ;
-    - compare la pente de cette droite à la vitesse théorique.
-    """
-
-    # Vitesse de groupe théorique
-    vg = (H_BARRE * k_0) / M
-
-    # Récupération de la position du pic à chaque frame
-    positions_pic = suivre_pic(
-        x=x,
-        t=t,
-        f=f,
-        V=V,
-        zone=zone,
-        seuil_relatif=0.01,
-    )
-
-    # ---------------------------------------------------------------------
-    # Calcul de la vitesse par régression linéaire
-    # ---------------------------------------------------------------------
-    # On évite np.diff(positions_pic) / dt car cela crée des pics artificiels.
-    # La bonne méthode ici est de mesurer la pente moyenne de x_pic(t).
-    # ---------------------------------------------------------------------
-
-    t_min_fit = 1.0
-
-    masque_fit = (
-        ~np.isnan(positions_pic)
-        & (t >= t_min_fit)
-    )
-
-    print("\nAnalyse de la vitesse du pic")
-    print("-" * 40)
-    print(f"Zone analysée : {zone}")
-    print(f"Vitesse théorique vg : {vg:.6g} m/s")
-    print(f"Régression linéaire faite pour t >= {t_min_fit} s")
-
-    if np.sum(masque_fit) >= 2:
-        coefficients = np.polyfit(t[masque_fit], positions_pic[masque_fit], 1)
-
-        vitesse_fit = coefficients[0]
-        position_initiale_fit = coefficients[1]
-
-        erreur_fit = abs(vitesse_fit - vg) / abs(vg) * 100
-
-        print(f"Vitesse numérique par régression : {vitesse_fit:.6g} m/s")
-        print(f"Erreur relative : {erreur_fit:.4g} %")
-
-    else:
-        print("Pas assez de points pour faire une régression linéaire.")
-        return positions_pic, np.array([]), vg
-
-    # ---------------------------------------------------------------------
-    # Affichage du graphe position + droite ajustée
-    # ---------------------------------------------------------------------
-    if afficher_graphes:
-
-        plt.figure(figsize=(8, 5))
-
-        plt.plot(
-            t,
-            positions_pic,
-            label="Position du pic numérique",
-        )
-
-        plt.plot(
-            t[masque_fit],
-            vitesse_fit * t[masque_fit] + position_initiale_fit,
-            "--",
-            label="Ajustement linéaire",
-        )
-
-        plt.xlabel("Temps t [s]")
-        plt.ylabel("Position du pic x [m]")
-        plt.title("Mesure de la vitesse par pente moyenne")
-        plt.grid(True)
-        plt.legend()
-        plt.show()
-
-    return positions_pic, vitesse_fit, vg
-
 
 #--Fonction principales---------------------------
 
-def main():
+def main(an=False):
 
     # E = h*nu = h * c / lambda
     # E >> V_0 => E >> 10.0 >> lambda << c*h / 10.0 => lambda ~ 
@@ -479,11 +238,10 @@ def main():
     lambda_0 = 2 * np.pi / k_0
 
     print(f"dx = {dx}")
-    print(f"lambda_0 = {lambda_0}")
+    print(f"{lambda_0=}")
     print(f"Nombre de points par longueur d'onde = {lambda_0 / dx}")
     print(f"k_0 * dx = {k_0 * dx}")
 
-    x_0 = -4.0
     V_0 = 20 # on test dans le cas d'une barrière nulle
     # on peut prendre V_0 = 20.0 et a = 1.0 ca marche bien
     V = np.zeros_like(x)
@@ -534,7 +292,7 @@ def main():
     # Pour analyser le paquet transmis après la barrière, mets zone="droite".
     # ---------------------------------------------------------------------
 
-    positions_pic, vitesses_num, vg_pic = analyser_vitesse_pic(
+    positions_pic, vitesses_num, vg_pic, position_initiale_fit = analyser_vitesse_pic(
         x=x,
         t=t,
         f=f,
@@ -542,6 +300,9 @@ def main():
         zone="droite",
         afficher_graphes=True
     )
+    print("-"*25)
+    print("Résultats : ")
+    print("="*25)
 
     print("Vitesse numérique du pic : {:.6g} m/s".format(vitesses_num))
 
@@ -549,23 +310,37 @@ def main():
         print("La vitesse numérique est correcte (erreur < 5%)")
     else:
         print("La vitesse numérique est incorrecte (erreur > 5%)")
+        exit(1)
 
-    #animation(x, f, t, V, V_0)
+    if an : animation(x, f, t, V, V_0)
 
     if t_passage == None or t_passage == np.inf:
         t_passage = np.nan
 
-    vg = (H_BARRE * k_0) / M # vitesse de groupe théorique
-    print(f"vg théorique    : {vg} m^s-1")
-    print(f"distance totale : {np.abs(x_0) + a_barriere} m")
-    print(f"---> temps théorique : {(np.abs(x_0) + a_barriere) / vg} s")
-    print(f"---> temps simulé    : {t_passage:.3g} s")
-    print(f"Erreur de temps : {erreur((np.abs(x_0) + a_barriere) / vg, t_passage)}%")
-    #R,T = calculer_RT(x,f,True,True)
+    vg = (H_BARRE * k_0) / M
+    print(f"vg théorique         : {vg} m/s")
+    print(f"vitesse mesurée       : {vitesses_num} m/s")
+    print(f"position initiale fit : {position_initiale_fit:.3f} m (x_0 = {x_0})")
+
+    # Distance réelle parcourue par le pic, mesurée depuis sa position extrapolée
+    distance_corrigee = a_barriere - position_initiale_fit
+    temps_theorique_corrige = distance_corrigee / vitesses_num   # <-- vitesse mesurée, pas vg_pic
+
+    print(f"Temps théorique corrigé : {temps_theorique_corrige:.4f} s")
+    print(f"Temps calculé (t_passage) : {t_passage:.4f} s")
+    print(f"Erreur : {erreur(t_passage, temps_theorique_corrige):.2f}%")
     R,T = calculer_RT(x,f,R = True, T = True)
     print(f"R = {R*100:.2g}% | T = {T*100:.2g}%")
 
-main()
+    exit(0)
+
+argv = sys.argv
+
+if (len(argv) > 1):
+    if bool(argv[1]):
+        main(True)
+
+main(False)
 
 # note séance 11/06
 # tester programme avec V_0 = 0 et confronter avec Gauss x
