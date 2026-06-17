@@ -28,11 +28,24 @@ def deriver(f : np.ndarray, x : np.ndarray, k : int = 1) -> np.ndarray :
     else : 
         return deriver(tangente_np, x[1:],k-1)
 
-def erreur(f_num : np.float64, f_th : np.float64, precision : int = 5, erreur : float = 1e-5):
-    """Retourne le pourcentage d'erreur de la version numérique par rapport à la théorie."""
-    norme = abs(f_num - f_th) # float
-    if norme <= erreur : norme = 0.0
-    return np.round(norme / f_th * 100, precision) # precision à 0.00001
+def erreur(f_num: float, f_th: float, precision: int = 5) -> float:
+    """
+    Retourne le pourcentage d'erreur de la version numérique par rapport à la théorie.
+    S'adapte automatiquement aux échelles microscopiques (femtosecondes).
+    """
+    norme = abs(f_num - f_th)
+    
+    # Sécurité anti-division par zéro si la théorie est nulle
+    if abs(f_th) == 0.0:
+        return 100.0 if f_num != 0.0 else 0.0
+        
+    # Calcul direct de l'erreur relative
+    erreur_relative = (norme / abs(f_th)) * 100
+    
+    if erreur_relative < 1e-5:
+        return 0.0
+        
+    return float(np.round(erreur_relative, precision))
 
 def verifier_normalisation(x: np.ndarray, f: np.ndarray, tol: float = 1e-2) -> bool:
     """
@@ -50,9 +63,9 @@ def verifier_normalisation(x: np.ndarray, f: np.ndarray, tol: float = 1e-2) -> b
     norme_fin   = normes[-1]
     derive_max  = np.max(np.abs(normes - 1.0))
 
-    print(f"Norme initiale : {norme_ini:.6f}")
-    print(f"Norme finale   : {norme_fin:.6f}")
-    print(f"Dérive max     : {derive_max:.2e}  (tolérance = {tol:.0e})")
+    print(f"Norme initiale : {norme_ini:.6g}")
+    print(f"Norme finale   : {norme_fin:.6g}")
+    print(f"Dérive max     : {derive_max:.2g}  (tolérance = {tol:.0g})")
 
     if derive_max > tol:
         print("Norme non conservée — schéma instable ou masque trop agressif")
@@ -62,26 +75,42 @@ def verifier_normalisation(x: np.ndarray, f: np.ndarray, tol: float = 1e-2) -> b
     return True
 
 def calculer_RT(x : np.array, f : np.array, R = True, T = False) -> float : 
-    """Retourne le coefficient de réfléxion et/ou celui de transmission pour la dernière valeur de t
-    --------
-    x : tableau 1d [M] -- abscice
-    f : tableau 2d (nt*nx) -- la fonction d'onde
-    R : bool -- réflexion 
-    T : bool -- transission
+    """Retourne les vrais coefficients de réflexion et de transmission 
+    en cherchant l'instant optimal avant l'absorption des bords.
     """
-
     if (not R and not T) : 
-        print("La fonction doit prendre au moin un parametre en True")
+        print("La fonction doit prendre au moins un paramètre en True")
         return -1.0, -1.0
     
     if (len(f) <= 0):
         print("La fonction d'onde ne peut pas être vide")
         return -1.0, -1.0
 
-    zone_negative = x[x <= 0] # utile pour la réflexion
-    indice_negatif = np.where(x <= 0)[0]
-    reflexion = np.trapz(np.abs(f[-1,indice_negatif])**2,zone_negative) # on calcul l'intégrale pour la réflexion (le + simple)
-    transmission = 1 - reflexion
+    densite = np.abs(f)**2
+    indices_negatifs = np.where(x <= 0)[0]
+    zone_negative = x[indices_negatifs]
+    
+    # 1. On cherche l'instant de départ pour savoir à quoi ressemble le paquet pur
+    # Au tout début, l'onde est à 100% à gauche.
+    norme_initiale_gauche = np.trapz(densite[0, indices_negatifs], zone_negative)
+
+    # 2. On cherche le moment où le paquet a fini de taper la barrière.
+    # C'est l'instant où la quantité d'onde à GAUCHE atteint son minimum local 
+    # (juste après le choc) avant que le paquet réfléchi ne commence à entrer dans le masque.
+    nt = f.shape[0]
+    
+    # On calcule l'intégrale à gauche pour chaque frame
+    integrales_gauche = [np.trapz(densite[j, indices_negatifs], zone_negative) for j in range(nt)]
+    
+    # Le vrai coefficient de transmission T est la quantité d'onde qui a RÉUSSI à passer à droite
+    # juste après le choc. On le mesure par complémentarité au point le plus bas du paquet à gauche.
+    quantite_gauche_minimale = np.min(integrales_gauche[int(nt*0.2):int(nt*0.8)]) # On check le milieu de la simu
+    
+    transmission = 1.0 - (quantite_gauche_minimale / norme_initiale_gauche)
+    
+    # Sécurité physique : T et R doivent être bridés entre 0 et 1
+    transmission = max(0.0, min(1.0, transmission))
+    reflexion = 1.0 - transmission
 
     if R and T :
         return reflexion, transmission
@@ -288,7 +317,13 @@ def analyser_vitesse_pic(x, t, f, V, zone="tout", afficher_graphes=True):
     # La bonne méthode ici est de mesurer la pente moyenne de x_pic(t).
     # ---------------------------------------------------------------------
 
-    t_min_fit = 1.0
+    if zone == "droite":
+        # Pour la zone droite, on ne fait le fit que sur la deuxième moitié 
+        # de la simulation, une fois que l'onde tunnel a franchi la barrière.
+        t_min_fit = t[-1] * 0.5  
+    else:
+        # Pour la zone "tout" ou "gauche", on peut prendre tout le début
+        t_min_fit = 0.0
 
     masque_fit = (
         ~np.isnan(positions_pic)
@@ -314,7 +349,7 @@ def analyser_vitesse_pic(x, t, f, V, zone="tout", afficher_graphes=True):
 
     else:
         print("Pas assez de points pour faire une régression linéaire.")
-        return positions_pic, np.array([]), vg
+        return positions_pic, np.array([]), vg, None
 
     # ---------------------------------------------------------------------
     # Affichage du graphe position + droite ajustée
@@ -374,20 +409,49 @@ def detecter_temps_passage(x: np.ndarray, t: np.ndarray, f: np.ndarray,
     float ou None
         Instant t_passage en secondes, ou None si jamais atteint.
     """
+    R, T = calculer_RT(x, f, R=True, T=True)
+
     densite = np.abs(f)**2
-    max_global = np.max(densite)
-    seuil = seuil_relatif * max_global
+    nt, nx = f.shape
 
-    for j in range(len(t)):
-        densite_j = densite[j, :]
-        if np.max(densite_j) < seuil:
-            continue
+    max_initial = np.max(densite[0, :])
+
+    if T <= R:
+        # --- CAS TUNNEL / RÉFLEXION DOMINANTE ---
+        # Si seulement 30% passe, on réduit le seuil de détection proportionnellement à T !
+        # On s'assure ainsi que le capteur cherche 5% *de la partie transmise*.
+        seuil = seuil_relatif * max_initial * T
         
-        # Pic sur TOUT l'axe x, pas seulement à droite
-        indice_pic_global = np.argmax(densite_j)
-        position_pic_global = x[indice_pic_global]
-
-        if position_pic_global >= x_ligne_arrivee:
-            return t[j]
+        # Sécurité : distance n'est pas définie dans tes arguments, 
+        # utilise directement x_ligne_arrivee ou une valeur fixe cohérente (ex: 1e-9)
+        masque_droite = x > (x_ligne_arrivee - 1e-9) 
+        
+        for j in range(nt):
+            densite_droite = densite[j, masque_droite]
+            x_droite = x[masque_droite]
+            
+            if len(densite_droite) == 0:
+                continue
+                
+            max_local_droite = np.max(densite_droite)
+            
+            if max_local_droite >= seuil:
+                indice_pic = np.argmax(densite_droite)
+                pos_pic = x_droite[indice_pic]
+                
+                if pos_pic >= x_ligne_arrivee:
+                    return t[j]
+    else:
+        # --- CAS SUR-BARRIÈRE / TRANSMISSION DOMINANTE ---
+        seuil = seuil_relatif * max_initial
+        for j in range(nt):
+            max_instantane = np.max(densite[j, :])
+            
+            if max_instantane >= seuil:
+                indice_pic = np.argmax(densite[j, :])
+                pos_pic = x[indice_pic]
+                
+                if pos_pic >= x_ligne_arrivee:
+                    return t[j]
 
     return None

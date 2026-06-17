@@ -22,7 +22,7 @@ def animation(x : np.array, matrice_f : np.array, t : np.array, V : np.array, V_
     
     # Configuration des axes (Haut)
     ax_wave.set_xlim(x[0], x[-1])
-    ax_wave.set_ylabel("Probabilité", fontsize=11)
+    ax_wave.set_ylabel("Densité de probabilité", fontsize=11)
     ax_wave.grid(True, linestyle="--", alpha=0.5)
     
     ymax_wave = np.max(np.abs(matrice_f)**2) * 1.3
@@ -44,7 +44,7 @@ def animation(x : np.array, matrice_f : np.array, t : np.array, V : np.array, V_
     
     # On trace la ligne d'énergie moyenne
     ax_energy.axhline(y=energie_moyenne, color="blue", linestyle="--", linewidth=2, 
-                       label=rf"Énergie moyenne $\langle E \rangle = {energie_moyenne:.2f}$")
+                       label=rf"Énergie moyenne $\langle E \rangle = {energie_moyenne:.2g}$")
     
     # Calcul du rapport E / V_0 (attention si V_0 vaut 0)
     rapport = energie_moyenne / V_0 if V_0 != 0 else np.inf

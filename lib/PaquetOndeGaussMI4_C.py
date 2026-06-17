@@ -7,13 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from numpy import sqrt, exp, pi
-
-#---Constantes numériques----------------------------------------
-# Toutes les constantes sont données avec 3 chiffres significatifs quand cela est nécessaire
-TWO_PI : float = 2*pi
-H_BARRE : float = 1 #= 6.626e-34 / TWO_PI # Constante de Planck réduite [J.s]
-M : float = 1 #= 9.109e-31 # Masse d'un électron [kg]
-C : float = 2.99792458e8 # vitesse de la lumière dans le vide [m.s^-1]
+from lib.constantes import *
 
 #---Constantes graphique----------------------------------------
 COLORS_PLOT : list[str] = ["purple","blue","green","yellow","red"]

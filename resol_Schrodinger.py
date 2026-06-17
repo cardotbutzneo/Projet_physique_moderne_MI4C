@@ -28,7 +28,7 @@ def Onde2d(x : np.array) -> np.array:
     arr[0,:] = GaussWP(k_0, lg_initiale, x, t_0)
     return arr
 
-def masque_absorbant(x, largeur=3.0):
+def masque_absorbant(x, largeur=3e-9):
     # Créer par Claude
     mask = np.ones_like(x)
     # Bord gauche
@@ -93,7 +93,7 @@ def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = 
     r = 1j * H_BARRE * dt / (4 * M * dx**2)  # coefficient central
 
     f = np.zeros((nt, nx), dtype=complex)
-    f[0, :] = GaussWP(k_0, lg_initiale, x, t[0], x_0)
+    f[0, :] = GaussWP(k_0, lg_initiale, x, t[0], x_0,H_BARRE=H_BARRE, M=M)
 
     # Matrices tridiagonales (format banded pour scipy)
     diag_A  =  1 + 2*r + 1j*dt/(2*H_BARRE) * V
@@ -130,21 +130,23 @@ def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = 
     else:
         x_fin_barriere = x[indices_barriere[-1]] # Coordonnée X de sortie de barrière
 
-    t_passage = detecter_temps_passage(x, t, f, x_ligne_arrivee=a_barriere, seuil_relatif=0.05)
+    x_capteur = x_fin_barriere + 3e-9 # distance arbitraire
+    t_passage = detecter_temps_passage(x, t, f, x_ligne_arrivee=x_capteur, seuil_relatif=0.0001)
+    if t_passage is None : return f, None
     j_detecte = np.argmin(np.abs(t - t_passage))
 
     densite_a_detection = np.abs(f[j_detecte, :])**2
     indice_pic_global = np.argmax(densite_a_detection)
     position_pic_reel = x[indice_pic_global]
 
-    tab_affichage.append("t_passage détecté : {:.4f}s".format(t_passage))
-    tab_affichage.append("Position du PIC RÉEL (sur tout x) à cet instant : {:.3f}m".format(position_pic_reel))
+    tab_affichage.append("t_passage détecté : {:.4g}s".format(t_passage))
+    tab_affichage.append("Position du PIC RÉEL (sur tout x) à cet instant : {:.3g}m".format(position_pic_reel))
     tab_affichage.append("x_ligne_arrivee : {}".format(a_barriere))
 
     if t_passage is not None:
-        tab_affichage.append("[Capteur numérique] Ligne d'arrivée x = {:.2f} franchie à t = {:.4f}s".format(x_fin_barriere, t_passage))
+        tab_affichage.append("[Capteur numérique] Ligne d'arrivée x = {:.2g} franchie à t = {:.4g}s".format(x_fin_barriere, t_passage))
     else:
-        tab_affichage.append("[Capteur numérique] Ligne d'arrivée x = {:.2f} NON franchie.".format(x_fin_barriere))
+        tab_affichage.append("[Capteur numérique] Ligne d'arrivée x = {:.2g} NON franchie.".format(x_fin_barriere))
 
     return f, t_passage
 
@@ -158,7 +160,8 @@ def générer_T(x : np.array, t : np.array) -> None:
 
     nb_pts = 25
     # On fait varier V_0 (la hauteur de la barrière)
-    tab_V_0 = np.linspace(5, 35, nb_pts)
+    tab_V_0_ev = np.linspace(0.3, 2.5, nb_pts)
+    tab_V_0 = tab_V_0_ev * 1.602e-19 
     
     # Calcul de l'énergie moyenne (constante) du paquet d'ondes
     energie_moyenne = (H_BARRE**2 * k_0**2) / (2 * M) + (H_BARRE**2) / (2 * M * (lg_initiale**2))
@@ -167,13 +170,14 @@ def générer_T(x : np.array, t : np.array) -> None:
 
     # On lance une simulation pour chaque valeur de V_0
     for i, v0 in enumerate(tab_V_0):
-        tab_affichage.append(f"Simulation {i+1}/{nb_pts} pour V_0 = {v0:.2f} J...")
+        V0_ev = v0 / 1.602e-19
+        print(f"Simulation {i+1}/{nb_pts} pour V_0 = {V0_ev:.2f} eV...")
         
         V_actuel = np.zeros_like(x)
 
         V_actuel[(x >= 0) & (x <= a_barriere)] = v0 
         
-        f, _ = propagation_onde_CN(x, t, V_actuel)
+        f, _ = propagation_onde_CN(x, t, V_actuel,x_0=x_0)
         
         # R=False, T=True pour ne récupérer que la transmission
         T = calculer_RT(x, f, R=False, T=True)
@@ -218,7 +222,7 @@ def main(an=False):
         print("-" * 20)
         print("1. Simulation maison")
         print("2. Simulation optimisée")
-        print("3. générer pour une liste de V_0 (entre 5 et 35 J)")
+        print("3. générer pour une liste de V_0 (entre 0.5 et 1.5 eV)")
         print("q pour quitter")
 
         reponse = input("Choix : ")
@@ -233,7 +237,7 @@ def main(an=False):
         else :
             print("Erreur, veuillez réessayer...")
         
-    borne = 50
+    borne = 40e-9
     x = np.linspace(-np.abs(borne),np.abs(borne),nx)
     dx = x[1] - x[0]
     lambda_0 = 2 * np.pi / k_0
@@ -243,7 +247,7 @@ def main(an=False):
     print(f"Nombre de points par longueur d'onde = {lambda_0 / dx}")
     print(f"k_0 * dx = {k_0 * dx}")
 
-    V_0 = 20 # on test dans le cas d'une barrière nulle
+    V_0 = 0.8 * 1.602e-19
     # on peut prendre V_0 = 20.0 et a = 1.0 ca marche bien
     V = np.zeros_like(x)
     V[(x >= 0) & (x <= a_barriere)] = V_0
@@ -255,16 +259,16 @@ def main(an=False):
         tolerance = 1e-02
 
     elif reponse == 2 : 
-        t_max = 2.5
+        t_max = 60e-15
         t = np.linspace(0,t_max,nt) 
-        f, t_passage = propagation_onde_CN(x,t,V) #propagation_onde(x,t,V)
+        f, t_passage = propagation_onde_CN(x,t,V,x_0=x_0) #propagation_onde(x,t,V)
         tolerance = 1e-5
     
     elif reponse == 3:
-        t_max = 5
+        t_max = 60e-15
         t = np.linspace(0,t_max,nt) 
         générer_T(x,t)
-        return
+        exit(0)
 
     print("Début de la simuation avec les paramètres : ")
     print("-" * 20)
@@ -299,7 +303,7 @@ def main(an=False):
         f=f,
         V=V,
         zone="droite",
-        afficher_graphes=True
+        afficher_graphes=True if an else False
     )
     print("-"*25)
     print("Résultats : ")
@@ -318,18 +322,31 @@ def main(an=False):
     if t_passage == None or t_passage == np.inf:
         t_passage = np.nan
 
+    # --- CALCUL THÉORIQUE UNIVERSEL ---
     vg = (H_BARRE * k_0) / M
-    print(f"vg théorique         : {vg} m/s")
-    print(f"vitesse mesurée       : {vitesses_num} m/s")
-    print(f"position initiale fit : {position_initiale_fit:.3f} m (x_0 = {x_0})")
+    E = (H_BARRE**2 * k_0**2) / (2*M) + (H_BARRE**2) / (2*M*lg_initiale**2)  # Énergie moyenne
+    
+    t_avant_barriere = (0 - x_0) / vg  # Trajet de x_0 à 0
+    t_apres_barriere = 3e-9 / vg        # Trajet après la barrière (si ton capteur est décalé de 2m)
 
-    # Distance réelle parcourue par le pic, mesurée depuis sa position extrapolée
-    distance_corrigee = a_barriere - position_initiale_fit
-    temps_theorique_corrige = distance_corrigee / vitesses_num   # <-- vitesse mesurée, pas vg_pic
+    if E > V_0:
+        k_barriere = np.sqrt(k_0**2 - 2*M*V_0/H_BARRE**2)
+        v_barriere = (H_BARRE * k_barriere) / M
+        t_dans_barriere = a_barriere / v_barriere
+        print(f"Régime classique - v dans la barrière : {v_barriere:.4g} m/s")
+    else:
+        kappa = np.sqrt(2*M*(V_0 - E) / H_BARRE**2)
+        t_dans_barriere = (2 * M) / (H_BARRE * k_0 * kappa)
+        print(f"Régime Tunnel - kappa : {kappa:.4g} m^-1") #vu avec IA pour explication de t_passage None pour des valeurs de V_0 trop grande (> E)
 
-    print(f"Temps théorique corrigé : {temps_theorique_corrige:.4f} s")
-    print(f"Temps calculé (t_passage) : {t_passage:.4f} s")
-    print(f"Erreur : {erreur(t_passage, temps_theorique_corrige):.2f}%")
+    temps_theorique_total = t_avant_barriere + t_dans_barriere + t_apres_barriere
+    
+    print(f"Temps théorique total : {temps_theorique_total:.4g} s")
+    print(f"Temps numérique mesuré : {t_passage:.4g} s")
+    
+    if t_passage is not None and not np.isnan(t_passage):
+        print(f"Erreur : {erreur(t_passage, temps_theorique_total):g}%")
+
     R,T = calculer_RT(x,f,R = True, T = True)
     print(f"R = {R*100:.2g}% | T = {T*100:.2g}%")
 
