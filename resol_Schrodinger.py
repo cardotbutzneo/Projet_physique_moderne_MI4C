@@ -19,6 +19,7 @@ from lib.graphique import animation
 Définition de f'(a) = lim_h->0 (f(a+h) - f(a)) / h = df/dx(a) ~ (f(b) - f(a)) / (b-a)
 """
 
+tab_affichage = [] #tableau pour afficher tous les prints
 
 def Onde2d(x : np.array) -> np.array:
     """Retourne une matrice de nx lignes et nt colonnes représentant l'évolution d'une onde gaussienne dans l'espace à un t donné."""
@@ -124,7 +125,7 @@ def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = 
     indices_barriere = np.where(V > 0)[0]
     
     if len(indices_barriere) == 0:
-        print(f"Pas de barrière détectée dans V(x). Capteur calé sur x = {a_barriere}m.")
+        tab_affichage.append("Pas de barrière détectée dans V(x). Capteur calé sur x = {}m.".format(a_barriere))
         x_fin_barriere = a_barriere
     else:
         x_fin_barriere = x[indices_barriere[-1]] # Coordonnée X de sortie de barrière
@@ -136,14 +137,14 @@ def propagation_onde_CN(x : np.array, t : np.array, V : np.array, x_0 : float = 
     indice_pic_global = np.argmax(densite_a_detection)
     position_pic_reel = x[indice_pic_global]
 
-    print(f"t_passage détecté : {t_passage:.4f}s")
-    print(f"Position du PIC RÉEL (sur tout x) à cet instant : {position_pic_reel:.3f}m")
-    print(f"x_ligne_arrivee : {a_barriere}")
+    tab_affichage.append("t_passage détecté : {:.4f}s".format(t_passage))
+    tab_affichage.append("Position du PIC RÉEL (sur tout x) à cet instant : {:.3f}m".format(position_pic_reel))
+    tab_affichage.append("x_ligne_arrivee : {}".format(a_barriere))
 
     if t_passage is not None:
-        print(f"\n[Capteur numérique] Ligne d'arrivée x = {x_fin_barriere:.2f} franchie à t = {t_passage:.4f} s")
+        tab_affichage.append("[Capteur numérique] Ligne d'arrivée x = {:.2f} franchie à t = {:.4f}s".format(x_fin_barriere, t_passage))
     else:
-        print(f"\nLe paquet d'onde n'a pas atteint la ligne d'arrivée x = {x_fin_barriere:.2f}.")
+        tab_affichage.append("[Capteur numérique] Ligne d'arrivée x = {:.2f} NON franchie.".format(x_fin_barriere))
 
     return f, t_passage
 
@@ -166,7 +167,7 @@ def générer_T(x : np.array, t : np.array) -> None:
 
     # On lance une simulation pour chaque valeur de V_0
     for i, v0 in enumerate(tab_V_0):
-        print(f"Simulation {i+1}/{nb_pts} pour V_0 = {v0:.2f} J...")
+        tab_affichage.append(f"Simulation {i+1}/{nb_pts} pour V_0 = {v0:.2f} J...")
         
         V_actuel = np.zeros_like(x)
 
@@ -331,6 +332,11 @@ def main(an=False):
     print(f"Erreur : {erreur(t_passage, temps_theorique_corrige):.2f}%")
     R,T = calculer_RT(x,f,R = True, T = True)
     print(f"R = {R*100:.2g}% | T = {T*100:.2g}%")
+
+    print("")
+    print("-"*10, " Debug de la simulation ", "-"*10)
+    for msg in tab_affichage:
+        print(msg)
 
     exit(0)
 
